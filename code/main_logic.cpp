@@ -23,7 +23,6 @@
 #include <winioctl.h>
 #include <initguid.h>
 #endif
-#include <algorithm>
 
 // Abstract base
 class DataWiper {
@@ -206,7 +205,8 @@ static std::string windows_detect_type(const std::string &device) {
                 model = std::string(p);
                 std::transform(model.begin(), model.end(), model.begin(), ::tolower);
                 if (model.find("ssd") != std::string::npos) {
-                    CloseHandle(h); return "SATA-SSD";/* */                }
+                    CloseHandle(h); return "SATA-SSD";
+                }
             }
             CloseHandle(h);
             return "HDD";
