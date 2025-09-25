@@ -7,10 +7,25 @@ struct DriveInfo {
     std::string bus;    // sata, nvme, usb, etc.
     bool isSED = false; // self-encrypting drive?
 };
+void singlePass(const DriveInfo& d) {
+    std::cout << "[*] Overwrite (Single-pass Clear) -> " << d.name << "\n";
+    // TODO: implement sequential overwrite for removable/unknown drives
+}
 
 void ataSecureErase(const DriveInfo& d) {
     std::cout << "[*] ATA Secure Erase -> " << d.name << "\n";
-    // TODO: implement ATA secure erase (IOCTL/hdparm)
+    void ataSecureErase(const DriveInfo& d) {
+    #ifdef __linux__
+        std::cout << "[*] ATA Secure Erase (Linux) -> " << d.name << "\n";
+        std::string cmd = "hdparm --user-master u --security-set-pass p " + d.name +
+                        " && hdparm --user-master u --security-erase p " + d.name;
+        system(cmd.c_str());
+    #elif _WIN32
+        std::cout << "[*] ATA Secure Erase (Windows) -> " << d.name << "\n";
+        // TODO: implement IOCTL_ATA_PASS_THROUGH
+    #endif
+}
+
 }
 void cryptoGraphicErase(const DriveInfo& d) {
     std::cout << "[*] Crypto Erase -> " << d.name << "\n";

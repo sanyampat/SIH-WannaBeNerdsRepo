@@ -107,10 +107,73 @@ std::vector<DriveInfo> getDrives() {
 }
 
 #elif defined(__linux__)
-// TODO: Linux implementation (/sys/block, lsblk, etc.)
-std::vector<DriveInfo> getDrives() {
-    return {}; // placeholder
+
+#include <dirent.h>
+#include <fstream>
+#include <unistd.h>
+
+std::string readSysfs(const std::string& path) {
+    std::ifstream f(path);
+    if (!f.is_open()) return {};
+    std::string val;
+    std::getline(f, val);
+    return val;
 }
+
+std::vector<DriveInfo> getDrives() {
+    std::vector<DriveInfo> drives;
+
+    DIR* dir = opendir("/sys/block");
+    if (!dir) return drives;
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string devName = entry->d_name;
+
+        // skip "." ".." and loop devices
+        if (devName == "." || devName == ".." || devName.find("loop") == 0)
+            continue;
+
+        DriveInfo info;
+        info.name = "/dev/" + devName;
+
+        std::string devPath = std::string("/sys/block/") + devName;
+
+        // Model (if available)
+        info.model = readSysfs(devPath + "/device/model");
+
+        // Rotational flag: 1 = HDD, 0 = SSD
+        std::string rotational = readSysfs(devPath + "/queue/rotational");
+        bool isSSD = (rotational == "0");
+
+        // Bus type (look at /sys/block/<dev>/device/subsystem)
+        char buf[PATH_MAX];
+        ssize_t len = readlink((devPath + "/device/subsystem").c_str(), buf, sizeof(buf)-1);
+        if (len > 0) {
+            buf[len] = '\0';
+            std::string subsys = buf;
+            if (subsys.find("nvme") != std::string::npos) {
+                info.bus = "nvme";
+                info.type = "NVMe SSD";
+            } else if (subsys.find("ata") != std::string::npos) {
+                info.bus = "sata";
+                info.type = isSSD ? "SATA SSD" : "HDD";
+            } else if (subsys.find("usb") != std::string::npos) {
+                info.bus = "usb";
+                info.type = "USB Storage";
+            } else {
+                info.bus = "other";
+                info.type = isSSD ? "SSD" : "HDD";
+            }
+        }
+
+        drives.push_back(info);
+    }
+
+    closedir(dir);
+    return drives;
+}
+
 #else
 std::vector<DriveInfo> getDrives() {
     return {}; // unsupported platform
