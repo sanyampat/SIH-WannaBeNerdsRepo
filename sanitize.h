@@ -22,3 +22,8 @@ bool nvmeFormatNVM(const std::string& devPath, uint8_t ses);
 // Verification + Logging
 bool verifyZeroed(const std::string& devPath, size_t checks = 5);
 void logSanitization(const DriveInfo& d, const std::string& method, bool success);
+
+#ifdef _WIN32
+// Make the dismount helper visible to other .cpp files (SanitizeDrives.cpp)
+bool dismountVolume(const std::string& volPath);
+#endif

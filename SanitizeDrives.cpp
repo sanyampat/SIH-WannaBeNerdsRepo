@@ -11,16 +11,16 @@
 #include "sanitize.h"
 
 // --- platform-specific getDrives implementations (Windows/Linux) ---
-// (kept same as your pasted version; only fix applied is logSanitization call)
+// (kept same as your pasted version; added USB dismount call in sanitizeDrive)
 
 #ifdef _WIN32
-// Windows code (unchanged)...
 #include <windows.h>
 #include <winioctl.h>
 #include <vector>
 
 static std::string trimTrailingBackslash(const std::string& s) {
-    if (!s.empty() && (s.back() == '\\' || s.back() == '/')) return s.substr(0, s.size()-1);
+    if (!s.empty() && (s.back() == '\\' || s.back() == '/'))
+        return s.substr(0, s.size() - 1);
     return s;
 }
 
@@ -37,12 +37,11 @@ std::vector<DriveInfo> getDrives() {
             continue;
 
         DriveInfo info;
-        info.name = std::string(1, c) + ":"; // store as "C:"
+        info.name = std::string(1, c) + ":"; // "C:"
         info.model = "";
         info.bus = "";
-        info.type = ""; // we try to fill later
+        info.type = "";
 
-        // Try to open volume to query storage properties
         std::string volPath = "\\\\.\\" + info.name; // \\.\C:
         HANDLE hVol = CreateFileA(volPath.c_str(), 0,
                                   FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -52,7 +51,6 @@ std::vector<DriveInfo> getDrives() {
             continue;
         }
 
-        // Query StorageDeviceSeekPenaltyProperty to guess SSD vs HDD
         STORAGE_PROPERTY_QUERY query{};
         query.PropertyId = StorageDeviceSeekPenaltyProperty;
         query.QueryType = PropertyStandardQuery;
@@ -66,7 +64,6 @@ std::vector<DriveInfo> getDrives() {
             isSSD = !seekPenalty.IncursSeekPenalty;
         }
 
-        // Query device descriptor for BusType & ProductId
         STORAGE_PROPERTY_QUERY query2{};
         query2.PropertyId = StorageDeviceProperty;
         query2.QueryType = PropertyStandardQuery;
@@ -95,7 +92,6 @@ std::vector<DriveInfo> getDrives() {
                 info.model = std::string(p);
             }
         } else {
-            // fallback: classify by drive type
             if (driveType == DRIVE_REMOVABLE) {
                 info.bus = "usb";
                 info.type = "USB Storage";
@@ -111,10 +107,7 @@ std::vector<DriveInfo> getDrives() {
     return drives;
 }
 
-// Map logical drive (e.g. "C:") to physical drive path (e.g. "\\.\PhysicalDrive0")
-// Returns empty string on failure.
 std::string driveLetterToPhysicalDrive(const std::string& driveLetter) {
-    // Expect input like "C:"
     if (driveLetter.size() < 2) return {};
 
     std::string volPath = "\\\\.\\" + driveLetter; // \\.\C:
@@ -127,8 +120,6 @@ std::string driveLetterToPhysicalDrive(const std::string& driveLetter) {
         return {};
     }
 
-    // DeviceIoControl needs a buffer that can hold multiple extents.
-    // We'll allocate a reasonable buffer (4 KB) that covers multiple extents.
     const DWORD bufSize = 4096;
     std::vector<BYTE> buf(bufSize);
     DWORD bytesReturned = 0;
@@ -147,7 +138,6 @@ std::string driveLetterToPhysicalDrive(const std::string& driveLetter) {
         return {};
     }
 
-    // Cast to structure (buffer large enough)
     auto* ext = reinterpret_cast<VOLUME_DISK_EXTENTS*>(buf.data());
     if (ext->NumberOfDiskExtents < 1) {
         std::cerr << "[!] No disk extents for " << volPath << "\n";
@@ -155,17 +145,14 @@ std::string driveLetterToPhysicalDrive(const std::string& driveLetter) {
         return {};
     }
 
-    // Choose first extent's DiskNumber
     DWORD diskNumber = ext->Extents[0].DiskNumber;
     CloseHandle(hVol);
 
     return std::string("\\\\.\\PhysicalDrive") + std::to_string(diskNumber);
 }
 
-#elif defined(__linux__)
-// Linux code (unchanged)...
 
-// ---------------- Linux drive detection (skip partitions) ----------------
+#elif defined(__linux__)
 #include <dirent.h>
 #include <fstream>
 #include <unistd.h>
@@ -180,12 +167,6 @@ static std::string readSysfs(const std::string& path) {
     return val;
 }
 
-// Returns true if /sys/block/<dev>/partition exists -> indicates it's a partition
-static bool isPartitionSysfs(const std::string& devPath) {
-    struct stat st;
-    return stat(devPath.c_str(), &st) == 0;
-}
-
 std::vector<DriveInfo> getDrives() {
     std::vector<DriveInfo> drives;
     DIR* dir = opendir("/sys/block");
@@ -196,44 +177,29 @@ std::vector<DriveInfo> getDrives() {
         if (devName == "." || devName == ".." || devName.find("loop") == 0)
             continue;
 
-        // Skip partition devices (e.g., sda1, nvme0n1p1). We only want whole devices (sda, nvme0n1).
-        // For most devices, the sysfs entry /sys/block/<dev>/partition does not exist for whole-device.
-        // To detect partition entries we check if the name contains digits at the end in a way that indicates a partition.
-        // Simpler robust approach: check for existence of "/sys/block/<dev>/partition" file — partitions have a "partition" file under their sysfs node.
         std::string sysPath = std::string("/sys/block/") + devName;
-        // If this entry itself is a partition directory (rare for /sys/block), skip.
-        // However, some virtuals like "mmcblk0p1" aren't in /sys/block top-level; the top-level contains whole devices.
-        // We'll do a more definitive check: only include top-level block devices (those that have /sys/block/<dev>/device)
-        if (access((sysPath + "/device").c_str(), F_OK) != 0) {
-            // skip entries that don't have device node
-            continue;
-        }
+        if (access((sysPath + "/device").c_str(), F_OK) != 0) continue;
 
         DriveInfo info;
         info.name = "/dev/" + devName;
 
-        // Skip partition-like names: sda1, nvme0n1p1, mmcblk0p1
-        // We can skip any name that contains a digit at the end (simple heuristic).
         bool looksLikePartition = false;
-        // if last char is digit, or name contains 'p' + digit at end for nvme/mmcblk
         if (!devName.empty() && isdigit(devName.back())) looksLikePartition = true;
         if (looksLikePartition) continue;
 
-        std::string devPath = sysPath;
-        info.model = readSysfs(devPath + "/device/model");
-        std::string rotational = readSysfs(devPath + "/queue/rotational");
+        info.model = readSysfs(sysPath + "/device/model");
+        std::string rotational = readSysfs(sysPath + "/queue/rotational");
         bool isSSD = (rotational == "0");
 
-        // Determine subsystem from symlink
         char buf[PATH_MAX];
-        ssize_t len = readlink((devPath + "/device/subsystem").c_str(), buf, sizeof(buf)-1);
+        ssize_t len = readlink((sysPath + "/device/subsystem").c_str(), buf, sizeof(buf)-1);
         if (len > 0) {
             buf[len] = '\0';
             std::string subsys = buf;
             if (subsys.find("nvme") != std::string::npos) {
                 info.bus = "nvme";
                 info.type = "NVMe SSD";
-            } else if (subsys.find("ata") != std::string::npos || subsys.find("ata") != std::string::npos) {
+            } else if (subsys.find("ata") != std::string::npos) {
                 info.bus = "sata";
                 info.type = isSSD ? "SATA SSD" : "HDD";
             } else if (subsys.find("usb") != std::string::npos) {
@@ -269,6 +235,13 @@ void sanitizeDrive(const DriveInfo& d, bool dryRun = false) {
             return;
         }
         targetPath = physical;
+
+        // Auto-dismount USB volumes before sanitizing
+        if (d.bus == "usb") {
+            std::string volPath = "\\\\.\\" + d.name; // e.g., \\.\E:
+            std::cout << "[*] Preparing USB drive: dismounting volume " << volPath << "\n";
+            dismountVolume(volPath);
+        }
     }
 #endif
 
@@ -321,7 +294,7 @@ void sanitizeDrive(const DriveInfo& d, bool dryRun = false) {
 // ---------------- Main ----------------
 int main(int argc, char* argv[]) {
     bool dryRun = false;
-    for (int i=1;i<argc;++i) {
+    for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--dry-run" || a == "-n") dryRun = true;
     }
@@ -334,7 +307,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Detected drives:\n";
     for (size_t i = 0; i < drives.size(); ++i) {
-        const auto & d = drives[i];
+        const auto& d = drives[i];
         std::cout << "  [" << i << "] " << d.name << " -> " << d.type;
         if (!d.model.empty()) std::cout << " (" << d.model << ")";
         if (!d.bus.empty())   std::cout << " [bus=" << d.bus << "]";

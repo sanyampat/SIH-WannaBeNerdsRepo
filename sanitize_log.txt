@@ -1,0 +1,4 @@
+[Thu Sep 25 18:43:06 2025
+] Drive: E: (Cruzer Blade) Bus: usb Method: overwriteZero Result: FAIL
+[Thu Sep 25 19:27:11 2025
+] Drive: E: (Cruzer Blade) Bus: usb Method: overwriteZero Result: SUCCESS
