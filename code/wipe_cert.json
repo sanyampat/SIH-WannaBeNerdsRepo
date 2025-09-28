@@ -1,0 +1,21 @@
+{
+    "certificate_id": "1758887644_E:",
+    "device": {
+        "bus": "usb",
+        "model": "Ultra",
+        "name": "E:",
+        "type": "USB Storage"
+    },
+    "issuer": {
+        "tool": "SIH-Wiper",
+        "version": "1.0"
+    },
+    "signature": "hmPjzMI/sFSKd1zjF3vANYEcr31KPf293dgyH7Kt2cCsPPT6E3cCUseBVJS3aPSdIuD5jL4DxWwduScao2DuwePFVj4mwP/Kq/nhiSyx6YGDG2rlGoxDbSsWBlpVajVfgRTNAxJ2+wgCARlKH6AtiEDccerDNMR+UuyfL0Mb1oCSlZtn3XtL2/3j9KaWQsJLvkT749YZ4NFS9HzFLaATMrjjoKbPLwg06oxT/c9Mr+5TRmH6NROFMjWR2I2QRUdQNW8TGFLv8jM+nFQLhwhkTNF2CUlI1oC17vEqr/mOGLiG7G6SanYpmodQgOYvU3UvZ2A4Vy8nyB1OYoOpqnxhDA==",
+    "signing_error": null,
+    "signing_key": "private.pem",
+    "wipe": {
+        "method": "overwriteZero",
+        "success": false,
+        "timestamp": "Fri Sep 26 17:24:04 2025\n"
+    }
+}
