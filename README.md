@@ -99,10 +99,3 @@ Wanna Be Nerds (Team ID: 86256)
 
 ⚠️ Disclaimer
 This tool is designed for secure data wiping. Running it on active system disks will result in permanent data loss. Use with caution.
-
-yaml
-Copy code
-
----
-
-👉 Do you want me to also add a **section for Windows usage** (like building with `cl.exe` or MinGW), or keep it Linux-focused for now?
